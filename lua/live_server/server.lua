@@ -331,6 +331,12 @@ function S.start(cfg)
     local ok, bind_err = pcall(function() tcp:bind("127.0.0.1", cfg.port) end)
     if not ok then error(bind_err or "bind failed") end
 
+    -- Resolve actual port (needed when cfg.port == 0 for OS-assigned port)
+    local actual_port = cfg.port
+    if cfg.port == 0 then
+        actual_port = tcp:getsockname().port
+    end
+
     local root_real = uv.fs_realpath(cfg.root)
     if not root_real then error("Invalid root: " .. tostring(cfg.root)) end
 
@@ -341,7 +347,7 @@ function S.start(cfg)
 
     local inst = {
         handle           = tcp,
-        port             = cfg.port,
+        port             = actual_port,
         root             = cfg.root,
         root_real        = root_real,
         default_index    = cfg.default_index,

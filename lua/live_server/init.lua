@@ -70,6 +70,7 @@ function start_for_path(path, port)
   end
 
   local s = M.state.servers[port]
+  local active_port = port
   if s then
     server.update_target(s, root, index)
     util.notify(("LiveServer %d retargeted → %s%s")
@@ -97,15 +98,16 @@ function start_for_path(path, port)
       },
     })
     if not ok then
-      return util.notify(("Port %d in use or failed to bind: %s"):format(port, inst_or_err), M.opts, "ERROR")
+      return util.notify(("Failed to bind port %s: %s"):format(tostring(port), inst_or_err), M.opts, "ERROR")
     end
-    M.state.servers[port] = inst_or_err
-    util.notify(("LiveServer %d started → %s"):format(port, root), M.opts)
+    active_port = inst_or_err.port
+    M.state.servers[active_port] = inst_or_err
+    util.notify(("LiveServer %d started → %s"):format(active_port, root), M.opts)
   end
 
   if M.opts.open_on_start then
-    util.open_browser(("http://127.0.0.1:%d/"):format(port))
-    M.state.opened_ports[port] = true
+    util.open_browser(("http://127.0.0.1:%d/"):format(active_port))
+    M.state.opened_ports[active_port] = true
   end
 end
 
