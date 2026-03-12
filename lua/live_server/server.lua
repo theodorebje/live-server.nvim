@@ -399,6 +399,14 @@ function S.start(cfg)
                         CLIENT_JS)
                 elseif req.path == "/__live/events" then
                     return sse_accept(inst, sock)
+                elseif req.path:find("^/__live/inject%?") then
+                    local event = req.path:match("[?&]event=([^&]+)")
+                    local data  = req.path:match("[?&]data=([^&]*)")
+                    if event then
+                        local decoded = data and util.url_decode(data) or "{}"
+                        sse_broadcast(inst, event, decoded)
+                    end
+                    return send_response(sock, 200, { ["Content-Type"] = "text/plain" }, "ok")
                 end
 
                 -- Map path
