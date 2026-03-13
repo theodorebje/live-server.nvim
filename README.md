@@ -206,7 +206,9 @@ All under the which-key group **`<leader>l`**:
 * **Local by default**: binds to `127.0.0.1`. If you want LAN, you can change the bind address in `server.lua` (not recommended for security).
 * **Path safety**: requests are realpath-checked to prevent escaping the served root.
 * **Index resolution**: root directory → `default_index` (if starting from a file) → `index_names` in order → directory listing. Subdirectories always use their own index files.
+* **Port 0 (OS-assigned)**: pass `port = 0` to let the OS pick a free port. The actual port is available via `inst.port` after `server.start()`.
 * **Same port, new path**: reusing the same port retargets the server → same URL, so browsers typically reuse the same tab.
+* **Event injection**: `GET /__live/inject?event=<type>&data=<json>` lets external processes broadcast SSE events to connected clients.
 * **Graceful exit**: all servers are automatically stopped on `VimLeavePre`.
 
 ---
@@ -241,14 +243,35 @@ ls.setup({ ... })                -- configure defaults
 ls.start_picker()                -- UI flow: pick path, then port
 ls.open_existing()               -- pick a port → open in browser
 ls.force_reload()                -- broadcast reload to clients
--- Server-level API (for plugin authors using live-server.nvim as a dependency):
--- server.send_event(inst, event_type, data)  -- send a custom SSE event to all connected browsers
 ls.toggle_livereload()           -- enable/disable live-reload for a port
 ls.status()                      -- print running server info
 ls.statusline()                  -- returns "[LS :8000]" or ""
 ls.stop_one()                    -- pick a port → stop
 ls.stop_all()                    -- stop everything
 ```
+
+### Server-level API (for plugin authors)
+
+```lua
+local server = require("live_server.server")
+
+local inst = server.start({ port = 0, root = "/path", ... })  -- port 0 = OS-assigned
+server.send_event(inst, "scroll", '{"line":42}')               -- broadcast custom SSE event
+server.reload(inst, "file.html")                                -- broadcast reload event
+server.update_target(inst, new_root, new_index)                 -- retarget without restart
+server.connected_client_count(inst)                             -- number of SSE clients
+server.stop(inst)                                               -- shut down
+```
+
+### HTTP event injection
+
+External processes can inject SSE events via HTTP:
+
+```
+GET /__live/inject?event=<type>&data=<url-encoded-json>
+```
+
+This broadcasts the event to all connected SSE clients. Used by [markdown-preview.nvim](https://github.com/selimacerbas/markdown-preview.nvim) for cross-instance scroll sync.
 
 ---
 
