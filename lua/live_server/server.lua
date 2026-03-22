@@ -189,9 +189,30 @@ local function scan_dirs(root)
     return dirs
 end
 
--- Attach a single-directory fs_event watcher (Linux fallback)
-local function add_dir_watch(inst, dir, cb)
+-- UV_FS_EVENT_RECURSIVE is only supported on macOS and Windows.
+-- On Linux (inotify) the flag is silently ignored — it does NOT error,
+-- it just watches only the given directory. We detect this via uv.os_uname().
+local function supports_recursive_watch()
+    local info = uv.os_uname()
+    local sys = info and info.sysname or ""
+    return sys == "Darwin" or sys:find("Windows") ~= nil
+end
+
+-- Attach a single-directory fs_event watcher with a dir-aware callback
+local function add_dir_watch(inst, dir)
     local ev = uv.new_fs_event()
+    local cb = function(err, fname, _status)
+        if err then return end
+        local full = fname and fname ~= "" and util.joinpath(dir, fname) or dir
+        schedule_reload(inst, full)
+        -- Watch newly created subdirectories
+        if fname and fname ~= "" then
+            local st = uv.fs_stat(full)
+            if st and st.type == "directory" and not inst._fs_events[full] then
+                add_dir_watch(inst, full)
+            end
+        end
+    end
     local ok = pcall(function() ev:start(dir, {}, cb) end)
     if not ok then
         pcall(function() ev:start(dir, cb) end)
@@ -212,40 +233,28 @@ local function stop_fs_watch(inst)
     end
 end
 
--- NOTE: luv has two signatures across versions:
---   start(path, opts_table, cb)  -- modern (expects table)
---   start(path, cb)              -- older (no options)
--- UV_FS_EVENT_RECURSIVE is only supported on macOS and Windows.
--- On Linux we fall back to per-directory watchers.
 local function start_fs_watch(inst)
     stop_fs_watch(inst)
 
-    local cb = function(err, fname, _status)
-        if err then return end
-        schedule_reload(inst, fname or "")
-        -- Linux fallback: watch newly created directories
-        if inst._fs_events and fname and fname ~= "" then
-            local full = util.joinpath(inst.root_real, fname)
-            local st = uv.fs_stat(full)
-            if st and st.type == "directory" and not inst._fs_events[full] then
-                add_dir_watch(inst, full, cb)
-            end
+    if supports_recursive_watch() then
+        -- macOS / Windows: single recursive watcher
+        local single = uv.new_fs_event()
+        local cb = function(err, fname, _status)
+            if err then return end
+            schedule_reload(inst, fname or "")
         end
+        local ok = pcall(function() single:start(inst.root_real, { recursive = true }, cb) end)
+        if ok then
+            inst.fs_event = single
+            return
+        end
+        pcall(function() single:close() end)
     end
 
-    -- Try recursive mode first (macOS/Windows)
-    local single = uv.new_fs_event()
-    local ok = pcall(function() single:start(inst.root_real, { recursive = true }, cb) end)
-    if ok then
-        inst.fs_event = single
-        return
-    end
-    pcall(function() single:close() end)
-
-    -- Fallback: per-directory watchers (Linux)
+    -- Linux (or recursive failed): per-directory watchers
     inst._fs_events = {}
     for _, dir in ipairs(scan_dirs(inst.root_real)) do
-        add_dir_watch(inst, dir, cb)
+        add_dir_watch(inst, dir)
     end
 end
 
