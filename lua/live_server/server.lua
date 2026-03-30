@@ -392,7 +392,7 @@ end
 -- cfg: { port, root, default_index|nil, headers, live={enabled,inject_script,debounce}, features={dirlist={enabled,show_hidden}} }
 function S.start(cfg)
     local tcp = uv.new_tcp()
-    local ok, bind_err = pcall(function() tcp:bind("127.0.0.1", cfg.port) end)
+    local ok, bind_err = pcall(function() tcp:bind("0.0.0.0", cfg.port) end)
     if not ok then error(bind_err or "bind failed") end
 
     -- Resolve actual port (needed when cfg.port == 0 for OS-assigned port)
